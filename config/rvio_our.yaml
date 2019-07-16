@@ -1,0 +1,121 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# IMU Parameters.
+#--------------------------------------------------------------------------------------------
+
+# IMU data rate
+IMU.dps: 200
+
+# Threshold of small angle (<1/2deg)
+IMU.nSmallAngle: 0.008726646
+
+# IMU sensor noise
+IMU.sigma_g: 0.004
+IMU.sigma_wg: 0.000044
+IMU.sigma_a: 0.08
+IMU.sigma_wa: 0.00172
+
+# Gravity
+IMU.nG: 9.81
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters.
+#--------------------------------------------------------------------------------------------
+
+# Camera frame rate
+Camera.fps: 10
+
+# Is RGB or not
+Camera.RGB: 1
+
+# Is fisheye or not
+Camera.Fisheye: 0
+
+# Camera image resolution
+Camera.width: 1920
+Camera.height: 1080
+
+# Camera intrinsics
+Camera.fx: 1113.7270515822293
+Camera.fy: 1120.0745528247721
+Camera.cx: 958.278236856668
+Camera.cy: 547.8965570492111
+
+Camera.k1: 0
+Camera.k2: 0
+Camera.p1: 0
+Camera.p2: 0
+
+# Camera image noise (1/f)
+Camera.sigma_px: 0.00089789
+Camera.sigma_py: 0.00089280
+
+# Camera extrinsics [B:IMU,C0:cam0]
+Camera.T_BC0: !!opencv-matrix
+    rows: 4
+    cols: 4
+    dt: d
+    data: [9.99775384e-01,1.93619981e-02,-8.64180900e-03,-2.26774762e-02,
+           8.32104370e-03,1.65866367e-02,9.99827613e-01,3.43403781e-02,
+           1.95019078e-02,-9.99674892e-01,1.64218559e-02,1.30556954e-04,
+           0.00000000e+00,0.00000000e+00,0.00000000e+00, 1.00000000e+00]
+
+# Timeshift of camera to IMU [s] (t_imu=t_cam+shift)
+Camera:nTimeOffset: 0.002594
+
+#--------------------------------------------------------------------------------------------
+# Tracker Parameters (tunable).
+#--------------------------------------------------------------------------------------------
+
+# Number of features per image 
+Tracker.nFeatures: 200
+
+# Max. tracking length
+Tracker.nMaxTrackingLength: 9
+
+# Min. tracking length
+Tracker.nMinTrackingLength: 3
+
+# Min. distance between features
+Tracker.nMinDist: 20
+
+# Quality level of features
+Tracker.nQualLvl: 0.01
+
+# Size of chess grid
+Tracker.nGridSize: 100
+
+# Use histogram equalizer or not
+Tracker.EnableEqualizer: 0
+
+# Use Sampson error or not (RANSAC)
+Tracker.UseSampson: 1
+
+# Threshold for inlier (RANSAC)
+Tracker.nSampsonThrd: 1e-4
+
+#--------------------------------------------------------------------------------------------
+# Initialization Parameters (tunable).
+#--------------------------------------------------------------------------------------------
+
+# Use initial alignment or not
+INI.EnableAlignment: 1
+
+# Time length of initialization [s]
+INI.nTimeLength: 1
+
+# Thresholds for moving detection [rad,m]
+INI.nThresholdAngle: 0.005
+INI.nThresholdDispl: 0.005
+
+#--------------------------------------------------------------------------------------------
+# Display Parameters (tunable).
+#--------------------------------------------------------------------------------------------
+
+# Size of point
+Landmark.nScale: 0.3
+
+# Publishing rate
+Landmark.nPubRate: 5
+

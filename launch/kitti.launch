@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<launch>
+
+    <!-- Config file -->
+    <arg name="config" default="$(find rvio)/config/rvio_euroc.yaml" />
+
+    <!-- Our launch details -->
+    <node name="rvio" pkg="rvio" type="rvio_mono" args="$(arg config)" output="screen">
+        <remap from="/imu" to="/kitti/oxts/imu"/>
+        <remap from="/camera/image_raw" to="/kitti/camera_color_left/image_raw"/>
+    </node>
+
+</launch>
