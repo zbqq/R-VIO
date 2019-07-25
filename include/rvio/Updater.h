@@ -42,7 +42,7 @@ public:
     Updater(const std::string& strSettingsFile);
 
     void update(Eigen::VectorXd& xk1k, Eigen::MatrixXd& Pk1k, std::vector<char>& pvFeatTypesForUpdate,
-                std::vector<std::list<cv::Point2f> >& pvlFeatMeasForUpdate);
+                std::vector<std::list<cv::Point2f> >& pvlFeatMeasForUpdate, std::vector<std::vector<int> > & pvvPoseForUpdate);
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -51,7 +51,7 @@ public:
     // Outputs
     Eigen::VectorXd xk1k1;
     Eigen::MatrixXd Pk1k1;
-
+    int mnMaxTrackingLength;
 private:
 
     double mnCamRate;

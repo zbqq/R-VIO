@@ -59,7 +59,7 @@ Updater::Updater(const std::string& strSettingsFile)
 
     mFeatPub = mUpdaterNode.advertise<visualization_msgs::Marker>("/rvio/landmarks", 1);
     mnPubRate = fsSettings["Landmark.nPubRate"];
-
+    mnMaxTrackingLength = fsSettings["Tracker.nMaxTrackingLength"];
     scaleLandmark.x = fsSettings["Landmark.nScale"];
     scaleLandmark.y = fsSettings["Landmark.nScale"];
     scaleLandmark.z = fsSettings["Landmark.nScale"];
@@ -74,7 +74,8 @@ Updater::Updater(const std::string& strSettingsFile)
 void Updater::update(Eigen::VectorXd& xk1k,
                      Eigen::MatrixXd& Pk1k,
                      std::vector<char>& pvFeatTypesForUpdate,
-                     std::vector<std::list<cv::Point2f> >& pvlFeatMeasForUpdate)
+                     std::vector<std::list<cv::Point2f> >& pvlFeatMeasForUpdate,
+                     std::vector<std::vector<int> > & pvvPoseForUpdate)
 {
     // Interact with ROS rviz
     visualization_msgs::Marker cloud;
@@ -112,11 +113,12 @@ void Updater::update(Eigen::VectorXd& xk1k,
     {
         char featType = pvFeatTypesForUpdate.at(featIdx);
         std::list<cv::Point2f> lFeatMeas = pvlFeatMeasForUpdate.at(featIdx);
-
+        std::vector<int> vPose = pvvPoseForUpdate.at(featIdx);
+/*
         int nTrackLength = (int)lFeatMeas.size();
         int nTrackPhases = nTrackLength-1;
         int nRelPosesDim = 7*nTrackPhases;
-
+        std::cout<<"nTrackPhases"<<" "<<nTrackPhases<<" "<<vPose[vPose.size()-1] - vPose[0]<<std::endl;
         Eigen::VectorXd mRelPoses;
         if (featType=='1')
             mRelPoses = xk1k.tail(nRelPosesDim);
@@ -141,6 +143,43 @@ void Updater::update(Eigen::VectorXd& xk1k,
             Eigen::Vector3d tC = mRci*QuatToRot(mRelPosesToFirst.block(7*i,0,4,1))*mtic+mRci*mRelPosesToFirst.block(7*i+4,0,3,1)+mtci;
             mCamRelPosesToFirst.block(7*i,0,7,1) << qC, tC;
         }
+*/
+
+        int nTrackLength = (int)lFeatMeas.size();
+        int nTrackPhases = nTrackLength-1;
+        Eigen::VectorXd mRelPoses;
+        if (featType=='1')
+        {
+            //std::cout<<"nTrackPhases"<<" "<<nTrackPhases<<" "<<vPose[vPose.size()-1] - vPose[0]<<std::endl;
+            nTrackPhases = vPose[vPose.size()-1] - vPose[0];
+            mRelPoses = xk1k.block(26+7*vPose[0],0,7*nTrackPhases,1);
+        }
+        else
+        {
+            //std::cout<<"nTrackPhases"<<" "<<nTrackPhases<<" "<<vPose[vPose.size()-1] - vPose[0]<<std::endl;
+            mRelPoses = xk1k.block(26,0,7*nTrackPhases,1);
+        }
+            
+        int nRelPosesDim = 7*nTrackPhases;
+        // [qIi1,tIi1]
+        Eigen::VectorXd mRelPosesToFirst(nRelPosesDim,1);
+        mRelPosesToFirst.block(0,0,7,1) << mRelPoses.block(0,0,4,1), -QuatToRot(mRelPoses.block(0,0,4,1))*mRelPoses.block(4,0,3,1);
+        for (int i=1; i<nTrackPhases; ++i)
+        {
+            Eigen::Vector4d qI = QuatMul(mRelPoses.block(7*i,0,4,1),mRelPosesToFirst.block(7*(i-1),0,4,1));
+            Eigen::Vector3d tI = QuatToRot(mRelPoses.block(7*i,0,4,1))*(mRelPosesToFirst.block(7*(i-1)+4,0,3,1)-mRelPoses.block(7*i+4,0,3,1));
+            mRelPosesToFirst.block(7*i,0,7,1) << qI, tI;
+        }
+
+        // [qCi1,tCi1]
+        Eigen::VectorXd mCamRelPosesToFirst(nRelPosesDim,1);
+        for (int i=0; i<nTrackPhases; ++i)
+        {
+            Eigen::Vector4d qC = RotToQuat(mRci*QuatToRot(mRelPosesToFirst.block(7*i,0,4,1))*mRic);
+            Eigen::Vector3d tC = mRci*QuatToRot(mRelPosesToFirst.block(7*i,0,4,1))*mtic+mRci*mRelPosesToFirst.block(7*i+4,0,3,1)+mtci;
+            mCamRelPosesToFirst.block(7*i,0,7,1) << qC, tC;
+        }
+
 
         //============================================
         // Feature initialization
@@ -210,11 +249,25 @@ void Updater::update(Eigen::VectorXd& xk1k,
 
             // The following measurements
             std::list<cv::Point2f>::const_iterator lit = lFeatMeas.begin();
-            for (int i=0; i<nTrackPhases; ++i, ++lit)
+            for (int i=0; i<nTrackLength-1; ++i, ++lit)
             {
-                Eigen::Matrix3d Rc = QuatToRot(mCamRelPosesToFirst.block(7*i,0,4,1));
-                Eigen::Vector3d tc = mCamRelPosesToFirst.block(7*i+4,0,3,1);
-                Eigen::Vector3d h = Rc*epfinv+rho*tc;
+                //std::cout<<"nTrackLength"<<" "<<nTrackLength-1<<" "<<i<<std::endl;
+                Eigen::Matrix3d Rc; 
+                Eigen::Vector3d tc;
+                Eigen::Vector3d h;
+                if(featType=='2')
+                {
+                    Rc = QuatToRot(mCamRelPosesToFirst.block(7*i,0,4,1));
+                    tc = mCamRelPosesToFirst.block(7*i+4,0,3,1);
+                    h  = Rc*epfinv+rho*tc;
+                    //std::cout<<lFeatMeas.size()<<" "<<(vPose[i]-vPose[0])<<" "<<i<<std::endl;
+                }
+                else
+                {
+                    Rc = QuatToRot(mCamRelPosesToFirst.block(7*(vPose[i]-vPose[0]),0,4,1));
+                    tc = mCamRelPosesToFirst.block(7*(vPose[i]-vPose[0])+4,0,3,1);
+                    h = Rc*epfinv+rho*tc;
+                }
 
                 Eigen::Matrix<double,2,3> Hproj;
                 Hproj << 1/h(2), 0, -h(0)/pow(h(2),2),
@@ -231,9 +284,13 @@ void Updater::update(Eigen::VectorXd& xk1k,
                 e << ((*lit)-pt).x, ((*lit)-pt).y;
 
                 cost += e.transpose()*Rinv*e;
-
-                HTRinvH.noalias() += H.transpose()*Rinv*H;
-                HTRinve.noalias() += H.transpose()*Rinv*e;
+                double w; 
+                if(e.norm()<0.001)
+                w = 1.0;
+                else
+                w = 0.001/(2*e.norm());
+                HTRinvH.noalias() += w*w*H.transpose()*Rinv*H;
+                HTRinve.noalias() += w*w*H.transpose()*Rinv*e;
             }
 
             if (cost<=lastCost)
@@ -271,13 +328,16 @@ void Updater::update(Eigen::VectorXd& xk1k,
             ROS_DEBUG("Invalid inverse-depth feature estimate (1)!");
             continue;
         }
-
+/*
         if (featType=='2')
         {
-            nTrackLength = std::ceil(.5*nTrackLength);
+            //nTrackLength = std::ceil(.5*nTrackLength);
+            nTrackLength = vPose.size() + 1;
+            std::cout<<nTrackLength<<" "<<vPose.size()<<std::endl;
             nTrackPhases = nTrackLength-1;
+            
         }
-
+*/
 
         //==========================================
         // Construct inverse-depth measurement model
@@ -290,12 +350,13 @@ void Updater::update(Eigen::VectorXd& xk1k,
         tempHf.setZero();
 
         int nStartRow = 0;
+/*
         int nStartCol;
         if (featType=='1')
             nStartCol = 6*(nCloneStates-nTrackPhases);
         else
             nStartCol = 0;
-
+*/
         // For the 1st measurement
         Eigen::Vector3d h1 = epfinv;
 
@@ -322,53 +383,111 @@ void Updater::update(Eigen::VectorXd& xk1k,
 
         // For the following measurements
         std::list<cv::Point2f>::const_iterator lit = lFeatMeas.begin();
-        for (int i=1; i<nTrackLength; ++i, ++lit)
+        for (int i=1; i<vPose.size(); ++i, ++lit)
         {
-            Eigen::Matrix3d R = QuatToRot(mRelPosesToFirst.block(7*(i-1),0,4,1));
-
-            Eigen::Matrix3d Rc = QuatToRot(mCamRelPosesToFirst.block(7*(i-1),0,4,1));
-            Eigen::Vector3d tc = mCamRelPosesToFirst.block(7*(i-1)+4,0,3,1);
-            Eigen::Vector3d h = Rc*epfinv+rho*tc;
-
-            cv::Point2f pt;
-            pt.x = h(0)/h(2);
-            pt.y = h(1)/h(2);
-
-            Eigen::Matrix<double,2,3> Hproj;
-            Hproj << 1/h(2), 0, -h(0)/pow(h(2),2),
-                     0, 1/h(2), -h(1)/pow(h(2),2);
-
-            // r
-            cv::Point2f e = (*lit)-pt;
-            tempr.block(2*i,0,2,1) << e.x, e.y;
-
-            // Hx: the 1st clone's subblock
-            Eigen::Matrix3d R0T = QuatToRot(mRelPosesToFirst.block(0,0,4,1)).transpose();
-            Eigen::Vector3d t0 = mRelPosesToFirst.block(4,0,3,1);
-
-            Eigen::Matrix3d dpx0 = SkewSymm(mRic*epfinv+rho*mtic+rho*R0T*t0);
-            Eigen::Matrix<double,3,6> subH;
-            subH << dpx0*R0T, -rho*Eigen::Matrix3d::Identity();
-
-            tempHx.block(nStartRow,nStartCol,2,6) = Hproj*mRci*R*subH;
-
-            // Hx: the following clones' subblocks
-            for (int j=1; j<i; ++j)
+            /*
+            if (featType=='1')
             {
-                Eigen::Matrix3d R1T = QuatToRot(mRelPosesToFirst.block(7*j,0,4,1)).transpose();
-                Eigen::Vector3d t1 = mRelPosesToFirst.block(7*j+4,0,3,1);
-                Eigen::Matrix3d R2T = QuatToRot(mRelPosesToFirst.block(7*(j-1),0,4,1)).transpose();
+                Eigen::Matrix3d R = QuatToRot(mRelPosesToFirst.block(7*(i-1),0,4,1));
 
-                Eigen::Matrix3d dpx = SkewSymm(mRic*epfinv+rho*mtic+rho*R1T*t1);
-                subH << dpx*R1T, -rho*R2T;
+                Eigen::Matrix3d Rc = QuatToRot(mCamRelPosesToFirst.block(7*(i-1),0,4,1));
+                Eigen::Vector3d tc = mCamRelPosesToFirst.block(7*(i-1)+4,0,3,1);
+                Eigen::Vector3d h = Rc*epfinv+rho*tc;
 
-                tempHx.block(nStartRow,nStartCol+6*j,2,6) = Hproj*mRci*R*subH;
+                cv::Point2f pt;
+                pt.x = h(0)/h(2);
+                pt.y = h(1)/h(2);
+
+                Eigen::Matrix<double,2,3> Hproj;
+                Hproj << 1/h(2), 0, -h(0)/pow(h(2),2),
+                            0, 1/h(2), -h(1)/pow(h(2),2);
+
+                // r
+                cv::Point2f e = (*lit)-pt;
+                tempr.block(2*i,0,2,1) << e.x, e.y;
+
+                // Hx: the 1st clone's subblock
+                Eigen::Matrix3d R0T = QuatToRot(mRelPosesToFirst.block(0,0,4,1)).transpose();
+                Eigen::Vector3d t0 = mRelPosesToFirst.block(4,0,3,1);
+
+                Eigen::Matrix3d dpx0 = SkewSymm(mRic*epfinv+rho*mtic+rho*R0T*t0);
+                Eigen::Matrix<double,3,6> subH;
+                subH << dpx0*R0T, -rho*Eigen::Matrix3d::Identity();
+
+                tempHx.block(nStartRow,nStartCol,2,6) = Hproj*mRci*R*subH;
+
+                // Hx: the following clones' subblocks
+                for (int j=1; j<i; ++j)
+                {
+                    Eigen::Matrix3d R1T = QuatToRot(mRelPosesToFirst.block(7*j,0,4,1)).transpose();
+                    Eigen::Vector3d t1 = mRelPosesToFirst.block(7*j+4,0,3,1);
+                    Eigen::Matrix3d R2T = QuatToRot(mRelPosesToFirst.block(7*(j-1),0,4,1)).transpose();
+
+                    Eigen::Matrix3d dpx = SkewSymm(mRic*epfinv+rho*mtic+rho*R1T*t1);
+                    subH << dpx*R1T, -rho*R2T;
+
+                    tempHx.block(nStartRow,nStartCol+6*j,2,6) = Hproj*mRci*R*subH;
+                }
+
+                // Hf
+                tempHf.block(nStartRow,0,2,3) << Hproj*Rc*Jang, Hproj*tc;
+
+                nStartRow += 2;
             }
+            else
+            */
+            {
+                Eigen::Matrix3d R = QuatToRot(mRelPosesToFirst.block(7*(vPose[i-1]-vPose[0]),0,4,1));
 
-            // Hf
-            tempHf.block(nStartRow,0,2,3) << Hproj*Rc*Jang, Hproj*tc;
+                Eigen::Matrix3d Rc = QuatToRot(mCamRelPosesToFirst.block(7*(vPose[i-1]-vPose[0]),0,4,1));
+                Eigen::Vector3d tc = mCamRelPosesToFirst.block(7*(vPose[i-1]-vPose[0])+4,0,3,1);
+                Eigen::Vector3d h = Rc*epfinv+rho*tc;
 
-            nStartRow += 2;
+                cv::Point2f pt;
+                pt.x = h(0)/h(2);
+                pt.y = h(1)/h(2);
+
+                Eigen::Matrix<double,2,3> Hproj;
+                Hproj << 1/h(2), 0, -h(0)/pow(h(2),2),
+                        0, 1/h(2), -h(1)/pow(h(2),2);
+
+                // r
+                cv::Point2f e = (*lit)-pt;
+                tempr.block(2*i,0,2,1) << e.x, e.y;
+
+                // Hx: the 1st clone's subblock
+                Eigen::Matrix3d R0T = QuatToRot(mRelPosesToFirst.block(0,0,4,1)).transpose();
+                Eigen::Vector3d t0 = mRelPosesToFirst.block(0+4,0,3,1);
+
+                Eigen::Matrix3d dpx0 = SkewSymm(mRic*epfinv+rho*mtic+rho*R0T*t0);
+                Eigen::Matrix<double,3,6> subH;
+                subH << dpx0*R0T, -rho*Eigen::Matrix3d::Identity();
+
+                tempHx.block(nStartRow,6*vPose[0],2,6) = Hproj*mRci*R*subH;
+
+                
+                // Hx: the following clones' subblocks
+                for (int j=1; j<(vPose[i-1]-vPose[0]+1); ++j)
+                {
+                    //std::cout<<vPose[i-1]<<" "<<j<<" "<<mRelPosesToFirst.rows()<<std::endl;
+                    Eigen::Matrix3d R1T = QuatToRot(mRelPosesToFirst.block(7*j,0,4,1)).transpose();
+                    //std::cout<<"aaa"<<std::endl;
+                    Eigen::Vector3d t1 = mRelPosesToFirst.block(7*j+4,0,3,1);
+                    //std::cout<<"bbb"<<std::endl;
+                    Eigen::Matrix3d R2T = QuatToRot(mRelPosesToFirst.block(7*(j-1),0,4,1)).transpose();
+                    //std::cout<<t1.transpose()<<std::endl;
+                    Eigen::Matrix3d dpx = SkewSymm(mRic*epfinv+rho*mtic+rho*R1T*t1);
+                    subH << dpx*R1T, -rho*R2T;
+
+                    tempHx.block(nStartRow,6*(j+vPose[0]),2,6) = Hproj*mRci*R*subH;
+                }
+
+                // Hf
+                tempHf.block(nStartRow,0,2,3) << Hproj*Rc*Jang, Hproj*tc;
+
+                nStartRow += 2;
+            }
+            
         }
 
         // ii. Feature marginalization
@@ -570,7 +689,7 @@ void Updater::update(Eigen::VectorXd& xk1k,
         xk1k1.block(4,0,6,1) = dx.block(3,0,6,1)+xk1k.block(4,0,6,1);
 
         Eigen::Vector3d g = xk1k1.block(7,0,3,1);
-        g.normalize();
+        //g.normalize();
         xk1k1.block(7,0,3,1) = g;
 
         // xR

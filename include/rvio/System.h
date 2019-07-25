@@ -49,6 +49,8 @@ public:
 
     void PushImuData(ImuData* data) { mpSensorDatabase->PushImuData(data); }
 
+    void FindRedundantStates(int& id);
+
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
 private:
@@ -89,7 +91,7 @@ private:
 
     // Interact with rviz
     ros::NodeHandle mSystemNode;
-    ros::Publisher mPathPub;
+    ros::Publisher mPathPub,mPosePub;
     tf::TransformBroadcaster mTfPub;
 };
 

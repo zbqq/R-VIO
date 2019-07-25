@@ -21,6 +21,7 @@
 #include <ros/ros.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/Image.h>
+#include <geometry_msgs/TransformStamped.h>
 #include <cv_bridge/cv_bridge.h>
 #include <eigen_conversions/eigen_msg.h>
 
@@ -28,6 +29,7 @@
 
 #include "rvio/System.h"
 
+ros::Publisher  GtPub; 
 
 class ImageGrabber
 {
@@ -50,6 +52,16 @@ public:
     RVIO::System* mpSys;
 };
 
+
+class GtGrabber
+{
+public:
+    GtGrabber(RVIO::System* pSys) : mpSys(pSys) {}
+
+    void GrabGt(const geometry_msgs::TransformStampedConstPtr& msg);
+
+    RVIO::System* mpSys;
+};
 
 void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
 {
@@ -103,6 +115,20 @@ void ImuGrabber::GrabImu(const sensor_msgs::ImuConstPtr& msg)
     mpSys->PushImuData(pData);
 }
 
+void GtGrabber::GrabGt(const geometry_msgs::TransformStampedConstPtr& msg)
+{
+    geometry_msgs::PoseStamped pose;
+    pose.header.stamp = ros::Time::now();
+    pose.header.frame_id = "world";
+    pose.pose.position.x = msg->transform.translation.x;
+    pose.pose.position.y = msg->transform.translation.y;
+    pose.pose.position.z = msg->transform.translation.z;
+    pose.pose.orientation.x = msg->transform.rotation.x;
+    pose.pose.orientation.y = msg->transform.rotation.y;
+    pose.pose.orientation.z = msg->transform.rotation.z;
+    pose.pose.orientation.w = msg->transform.rotation.w;
+    GtPub.publish(pose);
+}
 
 int main(int argc, char **argv)
 {
@@ -113,10 +139,13 @@ int main(int argc, char **argv)
 
     ImageGrabber igb1(&Sys);
     ImuGrabber igb2(&Sys);
+    GtGrabber igb3(&Sys);
 
     ros::NodeHandle nodeHandler;
-    ros::Subscriber image_sub = nodeHandler.subscribe("/camera/image_raw", 1, &ImageGrabber::GrabImage, &igb1);
-    ros::Subscriber imu_sub = nodeHandler.subscribe("/imu", 100, &ImuGrabber::GrabImu, &igb2);
+    ros::Subscriber image_sub = nodeHandler.subscribe("/camera/image_raw", 1000, &ImageGrabber::GrabImage, &igb1);
+    ros::Subscriber imu_sub = nodeHandler.subscribe("/imu", 10000, &ImuGrabber::GrabImu, &igb2);
+    ros::Subscriber gt_sub = nodeHandler.subscribe("/vicon/firefly_sbx/firefly_sbx", 100, &GtGrabber::GrabGt, &igb3);
+    GtPub = nodeHandler.advertise<geometry_msgs::PoseStamped>("/rvio/gt", 1);
 
     ros::spin();
 

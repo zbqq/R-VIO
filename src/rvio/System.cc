@@ -19,7 +19,7 @@
 */
 
 #include <Eigen/Core>
-
+#include <Eigen/Geometry>
 #include <boost/thread.hpp>
 
 #include <opencv2/core/core.hpp>
@@ -90,6 +90,7 @@ System::System(const std::string& strSettingsFile)
     mpSensorDatabase = new SensorDatabase();
 
     mPathPub = mSystemNode.advertise<nav_msgs::Path>("/rvio/trajectory", 1);
+    mPosePub = mSystemNode.advertise<geometry_msgs::PoseStamped>("/rvio/pose", 1);
 }
 
 
@@ -226,7 +227,12 @@ void System::MonoVIO(const cv::Mat& im, const double& timestamp, const int& seq)
 
     nImageCountAfterMoving++;
 
-
+    /**
+     * Find redundant state
+    */
+    int rmStateId = 0;
+    FindRedundantStates(rmStateId);
+    std::cout<<rmStateId<<std::endl;
     /**
      * Visual tracking & Propagation
      */
@@ -242,7 +248,7 @@ void System::MonoVIO(const cv::Mat& im, const double& timestamp, const int& seq)
      */
     if (nCloneStates>mnMinCloneStates)
     {
-        mpUpdater->update(mpPreIntegrator->xk1k, mpPreIntegrator->Pk1k, mpTracker->mvFeatTypesForUpdate, mpTracker->mvlFeatMeasForUpdate);
+        mpUpdater->update(mpPreIntegrator->xk1k, mpPreIntegrator->Pk1k, mpTracker->mvFeatTypesForUpdate, mpTracker->mvlFeatMeasForUpdate, mpTracker->mvvPoseForUpdate);
 
         xkk = mpUpdater->xk1k1;
         Pkk = mpUpdater->Pk1k1;
@@ -257,7 +263,7 @@ void System::MonoVIO(const cv::Mat& im, const double& timestamp, const int& seq)
     /**
      * State augmentation
      */
-    if (nImageCountAfterMoving>1)
+    //if (nImageCountAfterMoving>1)
     {
         if (nCloneStates<mnSlidingWindowSize)
         {
@@ -370,6 +376,7 @@ void System::MonoVIO(const cv::Mat& im, const double& timestamp, const int& seq)
 
     // Visualize the trajectory
     geometry_msgs::PoseStamped pose;
+    pose.header.stamp = ros::Time::now();
     pose.header.frame_id = "world";
     pose.pose.position.x = pGk(0);
     pose.pose.position.y = pGk(1);
@@ -383,8 +390,19 @@ void System::MonoVIO(const cv::Mat& im, const double& timestamp, const int& seq)
     path.poses.push_back(pose);
 
     mPathPub.publish(path);
-
+    mPosePub.publish(pose);
     usleep(1000);
+}
+
+void System::FindRedundantStates(int &id)
+{
+    Eigen::MatrixXd tempx(7,1); 
+    tempx = xkk.block(26+7*(mnSlidingWindowSize-1),0,7,1);
+    double distance = tempx.block(4,0,3,1).norm();
+    double angle = Eigen::AngleAxisd(Eigen::Quaterniond(tempx(3),tempx(0),tempx(1),tempx(2))).angle();
+    std::cout<<angle<<" "<<distance<<std::endl;
+    if(angle < 0.2618 && distance < 0.4)
+        id = mnSlidingWindowSize-1;
 }
 
 } //namespace RVIO

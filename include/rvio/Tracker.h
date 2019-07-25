@@ -61,6 +61,8 @@ public:
     void DisplayNewer(const cv::Mat& imIn, std::vector<cv::Point2f>& vFeats, std::vector<cv::Point2f>& vNewFeats,
                       cv_bridge::CvImage& imOut);
 
+    static void MinusOne(int& i) {i--;}
+
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
 public:
@@ -73,6 +75,8 @@ public:
     // Feature measurements for update
     // Each list corresponds to a feature with its size the tracking length.
     std::vector<std::list<cv::Point2f> > mvlFeatMeasForUpdate;
+
+    std::vector<std::vector<int> > mvvPoseForUpdate;
 
 private:
 
@@ -111,6 +115,8 @@ private:
      */
     std::vector<std::list<cv::Point2f> > mvlTrackingHistory;
 
+    std::vector<std::vector<int> > mvvPoseHistory;
+    
     // Features to track
     std::vector<cv::Point2f> mvFeatsToTrack;
 

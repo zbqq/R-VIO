@@ -98,6 +98,7 @@ Tracker::Tracker(const std::string& strSettingsFile)
     mnMaxFeatsForUpdate = std::ceil(0.5*mnMaxFeatsPerImage);
 
     mvlTrackingHistory.resize(mnMaxFeatsPerImage);
+    mvvPoseHistory.resize(mnMaxFeatsPerImage);
 
     mnMaxTrackingLength = fsSettings["Tracker.nMaxTrackingLength"];
     mnMinTrackingLength = fsSettings["Tracker.nMinTrackingLength"];
@@ -295,7 +296,7 @@ void Tracker::track(cv::Mat& im,
         {
             cv::Point2f ptUN = vFeatsUndistNorm.at(i);
             mvlTrackingHistory.at(i).push_back(ptUN);
-
+            mvvPoseHistory.at(i).push_back(0);
             Eigen::Vector3d ptUNe = Eigen::Vector3d(ptUN.x,ptUN.y,1);
             mPoints1ForRansac.block(0,i,3,1) = ptUNe;
 
@@ -348,8 +349,9 @@ void Tracker::track(cv::Mat& im,
         // Prepare data for update
         mvFeatTypesForUpdate.clear();
         mvlFeatMeasForUpdate.clear();
+        mvvPoseForUpdate.clear();
         mvlFeatMeasForUpdate.resize(mnMaxFeatsForUpdate);
-
+        mvvPoseForUpdate.resize(mnMaxFeatsForUpdate);
         mvFeatsToTrack.clear();
         std::vector<int> vInlierIndicesToTrack;
         Eigen::MatrixXd tempPointsForRansac(3,mnMaxFeatsPerImage);
@@ -371,11 +373,13 @@ void Tracker::track(cv::Mat& im,
                     {
                         mvFeatTypesForUpdate.push_back('1');
                         mvlFeatMeasForUpdate.at(nMeasCount) = mvlTrackingHistory.at(idx);
+                        mvvPoseForUpdate.at(nMeasCount) = mvvPoseHistory.at(idx);
                         nMeasCount++;
                     }
                 }
 
                 mvlTrackingHistory.at(idx).clear();
+                mvvPoseHistory.at(idx).clear();
             }
             else
             {
@@ -396,24 +400,77 @@ void Tracker::track(cv::Mat& im,
                     {
                         mvFeatTypesForUpdate.push_back('2');
                         mvlFeatMeasForUpdate.at(nMeasCount) = mvlTrackingHistory.at(idx);
-
-                        while (mvlTrackingHistory.at(idx).size()>mnMaxTrackingLength-(std::ceil(.5*mnMaxTrackingLength)-1))
+/*
+                        while (mvlTrackingHistory.at(idx).size()>10)
+                        {
                             mvlTrackingHistory.at(idx).pop_front();
+                            mvvPoseForUpdate.at(nMeasCount).push_back(mvvPoseHistory.at(idx)[0]);
+                            mvvPoseHistory.at(idx).erase(mvvPoseHistory.at(idx).begin());
+                            
+                        }
+*/
+
+                        auto iter1=mvlTrackingHistory.at(idx).begin(); 
+                        auto iter2=mvvPoseHistory.at(idx).begin();    
+                        for(int i=0;i<4;i++)
+                        {
+                            iter1 = mvlTrackingHistory.at(idx).erase(iter1);
+                            mvvPoseForUpdate.at(nMeasCount).push_back(*iter2);
+                            iter2 = mvvPoseHistory.at(idx).erase(iter2);
+                            //++iter1;++iter1;++iter1;
+                            //++iter2;++iter2;++iter2;
+                        }
 
                         nMeasCount++;
                     }
                     else
+                    {
                         mvlTrackingHistory.at(idx).pop_front();
+                        mvvPoseHistory.at(idx).erase(mvvPoseHistory.at(idx).begin());
+                        std::cout<<"drop"<<std::endl;
+                        
+                    }
+                        
                 }
                 mvlTrackingHistory.at(idx).push_back(ptUN);
-
+                if(((xkk.rows()-26)/7)==mnMaxTrackingLength-1)
+                {
+                    std::for_each(mvvPoseHistory.at(idx).begin(),mvvPoseHistory.at(idx).end(),MinusOne);
+                    if(mvvPoseHistory.at(idx)[0]<0)
+                    {
+                        mvlTrackingHistory.at(idx).pop_front();
+                        mvvPoseHistory.at(idx).erase(mvvPoseHistory.at(idx).begin());
+                        std::cout<<"drop"<<std::endl;
+                    }    
+                }
+                
+                mvvPoseHistory.at(idx).push_back((xkk.rows()-26)/7);
                 Eigen::Vector3d ptUNe = Eigen::Vector3d(ptUN.x,ptUN.y,1);
                 tempPointsForRansac.block(0,nInlierCount,3,1) = ptUNe;
 
                 nInlierCount++;
             }
         }
+/*
+        for(auto a:mvvPoseHistory)
+        {
+            for(auto b:a)
+                std::cout<<b<<" ";
+            std::cout<<std::endl;
+        }
 
+        for(auto a:mvvPoseForUpdate)
+        {
+            for(auto b:a)
+                std::cout<<b<<" ";
+            std::cout<<std::endl;
+        }
+
+        for(auto a:mvFeatTypesForUpdate)
+        {
+            std::cout<<a<<std::endl;
+        }
+*/        
         if (!mlFreeIndices.empty())
         {
             // Feature supplement
@@ -450,7 +507,7 @@ void Tracker::track(cv::Mat& im,
 
                     cv::Point2f ptUN = lNewFeatsUndistNorm.front();
                     mvlTrackingHistory.at(idx).push_back(ptUN);
-
+                    mvvPoseHistory.at(idx).push_back((xkk.rows()-26)/7);
                     Eigen::Vector3d ptUNe = Eigen::Vector3d(ptUN.x,ptUN.y,1);
                     tempPointsForRansac.block(0,nInlierCount,3,1) = ptUNe;
 
